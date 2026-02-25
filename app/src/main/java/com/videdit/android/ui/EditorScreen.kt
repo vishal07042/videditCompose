@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,7 +39,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -46,7 +46,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -57,6 +56,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
@@ -106,7 +106,6 @@ fun EditorScreen(
     var durationMs by remember(videoPath) {
         mutableLongStateOf(((state.video?.durationSec ?: 0.0) * 1000.0).toLong())
     }
-    var isSeeking by remember { mutableFloatStateOf(-1f) }
     var controlsVisible by remember { mutableStateOf(true) }
     var isPlaying by remember { mutableStateOf(false) }
 
@@ -184,7 +183,7 @@ fun EditorScreen(
         ) {
             Column(
                 modifier = Modifier
-                    .weight(1.45f)
+                    .weight(1.52f)
                     .fillMaxHeight(),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -259,7 +258,7 @@ fun EditorScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 8.dp, vertical = 5.dp),
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
                         verticalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
                         TimelineWaveform(
@@ -267,27 +266,12 @@ fun EditorScreen(
                             positionMs = positionMs,
                             deletedSegments = state.deletedSegments,
                             seed = state.video?.displayName?.hashCode() ?: 7,
-                        )
-
-                        val sliderMax = durationMs.coerceAtLeast(1L).toFloat()
-                        val sliderValue = if (isSeeking >= 0f) isSeeking else positionMs.toFloat().coerceIn(0f, sliderMax)
-                        Slider(
-                            value = sliderValue,
-                            onValueChange = { value ->
-                                isSeeking = value
-                            },
-                            valueRange = 0f..sliderMax,
-                            colors = androidx.compose.material3.SliderDefaults.colors(
-                                thumbColor = Color(0xFF4D74FF),
-                                activeTrackColor = Color(0xFF4D74FF),
-                                inactiveTrackColor = Color(0xFF283058),
-                            ),
-                            onValueChangeFinished = {
-                                if (player != null && isSeeking >= 0f) {
-                                    player.seekTo(isSeeking.toLong())
-                                    positionMs = isSeeking.toLong()
+                            onSeek = { seekMs ->
+                                if (player != null) {
+                                    val bounded = seekMs.coerceIn(0L, durationMs.coerceAtLeast(1L))
+                                    player.seekTo(bounded)
+                                    positionMs = bounded
                                 }
-                                isSeeking = -1f
                             },
                         )
 
@@ -463,13 +447,21 @@ private fun TimelineWaveform(
     positionMs: Long,
     deletedSegments: List<TimeSegment>,
     seed: Int,
+    onSeek: (Long) -> Unit,
 ) {
     Canvas(
         modifier = Modifier
             .fillMaxWidth()
-            .height(18.dp)
+            .height(16.dp)
             .clip(RoundedCornerShape(10.dp))
-            .background(Color(0xFF222948)),
+            .background(Color(0xFF222948))
+            .pointerInput(durationMs) {
+                detectTapGestures { offset ->
+                    val ratio = if (size.width <= 0f) 0f else (offset.x / size.width).coerceIn(0f, 1f)
+                    val target = (durationMs.toDouble() * ratio).toLong()
+                    onSeek(target)
+                }
+            },
     ) {
         val w = size.width
         val h = size.height
